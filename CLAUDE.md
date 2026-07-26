@@ -1,131 +1,140 @@
 # CLAUDE.md
 
-Guía para Claude Code (claude.ai/code) al trabajar en este repositorio.
+Guia para Claude (o cualquier asistente de IA) al trabajar en este repositorio.
 
-## Qué es esto
+## Que es esto
 
-Bot de alertas para los formularios de Google del Hospital Departamental de
-Villavicencio E.S.E. Un único archivo de Google Apps Script (`WhatsAppAlerts.gs`)
-que se pega en el proyecto del formulario: un trigger instalable `onFormSubmit`
-arma un mensaje y lo envía al grupo del comité.
+Bot de alertas a WhatsApp para el formulario **REPORTE TECNOVIGILANCIA
+FOREIA001** del Hospital Departamental de Villavicencio E.S.E. (HDV). Un
+unico archivo de Google Apps Script (`WhatsAppAlerts.gs`) que vive dentro
+del proyecto de Apps Script **"Bot Tecnovigilancia"**, vinculado a la
+hoja de respuestas del formulario. Ese mismo proyecto ya tenia un trigger
+`onFormSubmit` que enviaba un correo (`notificarNuevaRespuesta`); este
+modulo se integro ahi mismo, no como un trigger ni un proyecto aparte.
 
-Sin build, sin gestor de paquetes, sin servidor. El repositorio es la fuente de
-verdad, pero **el código corre desde el editor de Apps Script** — editar aquí no
-cambia nada hasta pegar el archivo o hacer `clasp push`.
+Sin build, sin gestor de paquetes, sin servidor. El repositorio es la
+fuente de verdad, pero **el codigo corre desde el editor de Apps
+Script**, editar aqui no cambia nada hasta pegar el archivo en el editor
+(o hacer `clasp push` si en algun momento se configura clasp, que hoy no
+esta en uso).
 
-Dos perfiles, seleccionados con la propiedad `WA_PERFIL`:
+## Reglas que no son negociables
 
-| Perfil | Formulario | Proyecto Apps Script |
-|---|---|---|
-| `tecnovigilancia` (def.) | REPORTE TECNOVIGILANCIA FOREIA001 | Destinatarios Tecnovigilancia |
-| `proa` | Antimicrobianos restringidos | Dashboard PROA (repo `proa-dashboard`) |
+Estas reglas vienen de instrucciones explicitas del usuario a lo largo de
+varias sesiones de trabajo en este proyecto. No se deben revertir ni
+"mejorar" sin pedir confirmacion.
 
-## Comandos
+Regla 1: Solo se envia al grupo de WhatsApp configurado en
+`GREENAPI_GROUP_CHATID`. Nunca a un numero individual. El chatId de un
+grupo termina en `@g.us`; el de un contacto, en `@c.us`. Si una funcion
+alguna vez recibe o construye un chatId que no sea el de
+`GREENAPI_GROUP_CHATID`, es una senal de alarma.
 
-```bash
-# Sintaxis (el .gs es JavaScript; un error solo se vería al pegarlo en el editor)
-cp WhatsAppAlerts.gs /tmp/check.js && node --check /tmp/check.js
+Regla 2: Nunca enviar un correo (ni mensaje) de "aclaracion" pidiendo mas
+informacion al comite o a un tercero. Si un campo del formulario no
+tiene una columna exacta, se mapea al campo real mas parecido y se
+documenta la decision en `README.md` seccion 5, no se pausa el flujo
+para preguntar.
 
-# Pruebas en seco — lo mismo que corre CI
-node test/dry-run.js
-```
+Regla 3: Ninguna credencial en el codigo. Todo va en Propiedades del
+script (`PropertiesService.getScriptProperties()`). Este repo puede
+terminar en GitHub publico; un token hardcodeado quedaria expuesto para
+siempre en el historial de git.
 
-No hay más. `clasp` es opcional y no está versionado aquí.
+Regla 4: `listarChatsGreenAPI()` es de solo lectura (llama a `getChats`,
+no a `sendMessage`) y es la unica forma segura de descubrir el chatId de
+un grupo nuevo. `testEnvioWhatsApp()`, `enviarEjemploAlGrupo()` y
+`enviarCasosReales()` si envian mensajes reales al grupo configurado en
+ese momento, no ejecutarlas para "solo verificar algo" sin haber
+confirmado antes con el usuario cual es el grupo activo.
 
-## Qué se puede y qué no se puede probar
+## Incidente documentado, por que la regla 4 existe
 
-`UrlFetchApp`, `SpreadsheetApp`, `PropertiesService` y los triggers **no existen
-fuera del runtime de Apps Script**, así que nada local ejercita el envío real ni
-el disparo del trigger. Eso solo se valida ejecutando `probarAlertaWhatsApp()`
-desde el editor.
+Durante el cambio de grupo de destino (de "PRUEBA BOT" a "Nuevo
+SF-HDV-SyD-InterSalud"), un primer intento de ejecutar
+`listarChatsGreenAPI()` desde el editor de Apps Script termino, por una
+condicion de carrera en el selector de funcion del editor web, ejecutando
+`enviarCasosReales()` en su lugar, reenviando 3 mensajes reales al grupo
+PRUEBA BOT que ya se habian enviado antes. Se detecto por el formato de
+la respuesta en el log (`{"idMessage": "..."}`, que es la firma de
+`sendMessage`, no de `getChats`) y se corrigio recargando el editor en
+una pestana nueva y verificando el selector de funcion con una captura de
+pantalla inmediatamente antes de cada ejecucion.
 
-Lo que sí cubre `test/dry-run.js`, y es donde de verdad se rompe esto: la
-resolución de encabezados, la clasificación serio/no serio, las banderas y que
-ningún dato del paciente se filtre al mensaje. El arnés usa **`eval` indirecto**
-(`(0, eval)(...)`) a propósito: un `eval` directo dentro de un módulo en modo
-estricto aísla las declaraciones de función y el test no vería nada del módulo.
+Moraleja para quien automatice esto de nuevo (incluida una IA con acceso
+al editor web de Apps Script): despues de seleccionar una funcion y
+antes de ejecutarla, confirmar visualmente que el selector muestra el
+nombre correcto, y despues de ejecutar, leer el registro de ejecucion de
+inmediato para confirmar que el formato de la respuesta corresponde a la
+funcion esperada (por ejemplo, `getChats` devuelve una lista de chats, no
+un `idMessage`). Si algo no cuadra, detener la ejecucion (boton
+"Detener") de inmediato y avisar al usuario antes de continuar.
 
 ## Arquitectura
 
-`onNuevaRespuestaHDV(e)` es el único punto de entrada. Despacha por perfil a tres
-funciones —`waExtraerX_()`, `waAlertasX_()`, `waMensajeX_()`— y todo lo demás
-(envío, reintentos, cola, bitácora, antiduplicados, triggers) es común.
-**Agregar un formulario nuevo es escribir esas tres funciones y una rama en el
-despachador**, nada más.
+Un solo punto de entrada real: `notificarNuevaRespuesta(e)`, llamado por
+el trigger `onFormSubmit` del formulario. Arma el mensaje leyendo
+`e.namedValues` con el helper `campo()` (devuelve `"-"` si el campo no
+existe o esta vacio, nunca cadena vacia silenciosa) y llama a:
+`enviarAlertaWhatsApp(mensaje)` (POST a Green-API `sendMessage`) y
+`MailApp.sendEmail(...)` (el correo que ya existia antes de este
+modulo, sin cambios).
 
-Cosas que no se deducen leyendo una función suelta:
+El resto de funciones (`testConstruccionMensaje`, `enviarEjemploAlGrupo`,
+`construirMensajeDesdeEvento`, `enviarCasosReales`, `testEnvioWhatsApp`,
+`listarChatsGreenAPI`) son herramientas de configuracion y prueba, no
+parte del flujo de produccion.
 
-- **WhatsApp no tiene API oficial de grupos.** Ni la Cloud API de Meta ni Twilio
-  pueden publicar en un grupo: solo mensajes 1‑a‑1. Por eso el envío se abstrae
-  en seis ramas (`callmebot`, `ultramsg`, `whapi`, `greenapi`, `telegram`,
-  `webhook`). No "arregles" esto agregando la Cloud API creyendo que falta — se
-  evaluó y no sirve para el caso de uso. Telegram y el webhook (Google
-  Chat/Slack) son las únicas vías oficiales y sin riesgo de baneo del número.
+Cosas que no se deducen leyendo una funcion suelta:
 
-- **Los encabezados NO se buscan por texto literal**, y es deliberado. Los
-  títulos reales del formulario de tecnovigilancia traen espacios sobrantes
-  (`"  Clasificación  "`, `"  Sexo  "`, `"Área a la que pertenece   "`). Una
-  búsqueda exacta devuelve cadena vacía **sin lanzar error**: el mensaje sale con
-  campos en blanco y nadie se entera. `waNorm_()` quita acentos, colapsa espacios
-  y pasa a minúsculas.
+Los nombres de columna del formulario tienen tildes y son largos (por
+ejemplo "Area/Servicio de funcionamiento del dispositivo medico en el
+momento del evento/incidente"). `campo()` busca coincidencia exacta
+contra `e.namedValues`, si alguien edita el texto de una pregunta del
+formulario, ese campo empezara a salir como `"-"` sin lanzar error. No
+hay una funcion de verificacion de encabezados en este modulo (a
+diferencia de otros proyectos del hospital que si la tienen); si se
+agrega, debe listarse aqui.
 
-- **`waG_()` intenta coincidencia exacta antes que por prefijo**, y ese orden no
-  es cosmético: `"  Nombre  "` (quien reporta) convive con
-  `"Nombre de la institución"`, `"Nombre comercial del dispositivo médico"` y
-  `"Nombre o razón social del fabricante"`. Sin la exacta primero, el mensaje
-  diría el hospital en vez de la persona. Hay una prueba que lo fija.
+"Nombre del Reportante" y "Hospitalizacion" no son columnas literales
+del formulario. Se mapearon a `Nombre` (columna AD) y a `Desenlace del
+evento /incidente adverso` (columna X) respectivamente, por ser las mas
+cercanas semanticamente. Ver `README.md` seccion 5 para el mapeo
+completo y no reabrir esa decision sin razon nueva.
 
-- **`waEsSerio_()` no puede ser un `indexOf('serio')`**: `"Evento adverso no
-  serio"` contiene `"serio"` como subcadena. Exige `serio` presente y `no serio`
-  ausente. La mitad de los reportes se clasificaría mal con la versión ingenua.
+`enviarCasosReales()` contiene datos reales de pacientes (casos 3, 4 y 19
+del formulario, filas 4/5/20 de la hoja) usados una sola vez para validar
+el formato del mensaje con datos reales antes de pasar a produccion. Se
+deja en el archivo por trazabilidad de lo que se probo, no para volver a
+ejecutarse rutinariamente.
 
-- **El mensaje no lleva datos del paciente por defecto.** Ambos formularios
-  capturan PHI (identificación, diagnóstico, sexo, edad; en PROA además nombre e
-  historia clínica). Un grupo de WhatsApp no es un canal controlado y, con
-  pasarela no oficial, el texto pasa por un tercero. `WA_INCLUDE_PHI=true` lo
-  desactiva y es una decisión institucional, no técnica — no lo actives por
-  conveniencia al depurar. Hay pruebas que verifican que no se filtre.
-
-- **Ninguna credencial en el código.** Todo sale de `PropertiesService`. Meter un
-  token en el archivo lo publicaría en este repositorio y en `clasp push`.
-
-- **La detección de reporte tardío usa el plazo INVIMA de 72 h** entre la fecha
-  del evento y la del reporte, solo para reportes serios. `waDiasEntre_()` parsea
-  `dd/MM/yyyy` a mano porque `new Date()` interpreta ese formato como `MM/dd`.
-
-- **El trigger va en un solo proyecto.** Si queda activo en dos copias (p. ej.
-  institucional y espejo personal), cada respuesta genera dos mensajes.
-  `eliminarTriggersWhatsApp()` borra únicamente `onNuevaRespuestaHDV` y
-  `enviarResumenWhatsApp`, nunca triggers ajenos — el proyecto "Destinatarios
-  Tecnovigilancia" ya tiene los suyos para notificar por correo.
-
-- **Antiduplicados por número de fila** en Propiedades del script: los triggers
-  de Apps Script pueden reintentar la misma respuesta.
-
-- La bitácora va a una hoja `LogWhatsApp` del mismo libro de respuestas, que se
-  crea sola y se poda a las 1000 filas. Nunca escribas PHI ahí.
+El mensaje incluye diagnostico, edad y desenlace del paciente, a
+diferencia de otros bots de alertas de HDV que anonimizan por defecto.
+Es una decision operativa explicita para este proyecto (el comite
+necesita triar desde el grupo sin abrir la hoja), no "corregir" esto
+agregando anonimizacion sin que el usuario lo pida.
 
 ## Al editar
 
-- Estilo ES5 (`var`, `function`), sin flechas ni `let/const`, para no depender
-  del runtime V8 y mantener homogéneo el archivo.
-- Toda función interna lleva sufijo `_`; las que se ejecutan a mano desde el
-  editor (`instalarTriggerWhatsApp`, `probarAlertaWhatsApp`,
-  `verificarConfiguracionWhatsApp`, `verificarEncabezadosWhatsApp`,
-  `enviarResumenWhatsApp`) van sin sufijo — Apps Script no lista las privadas.
-- Si tocas encabezados o reglas, agrega la prueba correspondiente en
-  `test/dry-run.js`. Los encabezados reales de ambas hojas están ahí copiados
-  literalmente, con sus espacios sobrantes: sirven de contrato.
-- No hace falta publicar versión nueva al desplegar: el trigger corre contra
-  HEAD, no contra un despliegue `/exec`. Guardar el archivo en el editor basta.
+Estilo ES5 (`var`, `function`), consistente con el resto del codigo de
+Apps Script del hospital. Si se agrega un campo nuevo al mensaje,
+actualizar en conjunto: `notificarNuevaRespuesta()`,
+`construirMensajeDesdeEvento()` (usada por `enviarCasosReales`) y la
+tabla de mapeo de `README.md` seccion 5. Las tres versiones del mensaje
+(produccion, ejemplo, casos reales) deben mantenerse alineadas en el
+mismo orden de campos y mismos emojis. No hace falta publicar una
+version nueva del proyecto: el trigger corre contra el HEAD del editor,
+no contra un despliegue `/exec`. Guardar el archivo en el editor basta.
 
 ## Contexto operativo
 
-Las dos hojas de respuestas pertenecen a `controldecalidadgases@hdv.gov.co`. El
-trigger corre con la cuenta que lo crea, así que hay que instalarlo autorizando
-con esa cuenta institucional, no con una personal.
+La hoja de respuestas pertenece al formulario "REPORTE TECNOVIGILANCIA
+FOREIA001" del HDV; el proyecto de Apps Script es "Bot Tecnovigilancia".
+Grupo de WhatsApp de destino actual: Nuevo SF-HDV-SyD-InterSalud
+(`120363426937928040@g.us`). El grupo "PRUEBA BOT"
+(`120363412506101174@g.us`) quedo descontinuado tras la fase de pruebas,
+no reactivarlo como destino sin instruccion explicita.
 
-Volumen actual de tecnovigilancia: ~2 reportes al mes (19 entre oct‑2025 y
-jul‑2026). El modo instantáneo no satura nada; `WA_SOLO_ALERTAS`, `WA_SILENCIO` y
-`WA_MODO=resumen` existen para PROA o si el reporte se masifica. Un grupo
-saturado se silencia, que es lo contrario del objetivo.
+El usuario (Juan Pablo Saavedra) es Quimico Farmaceutico, referente de
+Tecnovigilancia y secretario del comite del HDV. Los mensajes de este
+bot llegan al mismo comite que el coordina.
