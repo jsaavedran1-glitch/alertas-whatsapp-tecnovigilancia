@@ -1,50 +1,62 @@
 # Changelog
 
-## Separación desde `proa-dashboard`
+Todos los cambios notables de este modulo se documentan aqui.
 
-El módulo nació dentro del repositorio del dashboard PROA, pero el formulario de
-tecnovigilancia no tiene relación con el programa de antimicrobianos: son
-comités, formularios y hojas distintas. Se movió aquí como proyecto propio.
+## [Reemplazo completo] - 2026-07-26
 
-## Alertas a WhatsApp con cada respuesta de un Google Form
+Se reemplazo la implementacion anterior (arquitectura multi-proveedor
+`WA_*` con proteccion PHI por defecto) por la version realmente
+desplegada y en produccion en el proyecto de Apps Script "Bot
+Tecnovigilancia" (Green-API unicamente, propiedades `GREENAPI_*`).
 
-Archivo único de Apps Script con un trigger instalable `onFormSubmit`. Notas de
-diseño, para no volver a discutirlas:
+### Anadido
 
-- **WhatsApp no tiene API oficial de grupos.** Ni la Cloud API de Meta ni Twilio
-  pueden publicar en un grupo — solo mensajes 1-a-1. Llegar a un grupo exige
-  CallMeBot (gratis, sin SLA) o una pasarela basada en WhatsApp Web no oficial
-  (UltraMsg, Whapi, Green API), con riesgo real de baneo del número. El envío se
-  abstrae tras una sola propiedad con seis destinos, de modo que cambiar de
-  proveedor no toca el resto del código; Telegram y el webhook (Google
-  Chat/Slack) son las únicas vías oficiales y sin costo.
-- **Los encabezados se buscan normalizados, no por texto literal.** Los del
-  formulario de tecnovigilancia traen espacios sobrantes (`"  Clasificación  "`,
-  `"  Sexo  "`, `"Área a la que pertenece   "`); una búsqueda exacta devolvería
-  `''` **sin error** y el mensaje saldría con campos en blanco sin que nadie lo
-  note. `waNorm_()` quita acentos, colapsa espacios y pasa a minúsculas;
-  `waG_()` intenta coincidencia exacta normalizada y solo después cae a prefijo
-  más corto. Ese orden es necesario: `"  Nombre  "` (quien reporta) convive con
-  `"Nombre de la institución"` y `"Nombre o razón social del fabricante"`.
-- **`waEsSerio_()` no puede ser un `indexOf('serio')`**: `"Evento adverso no
-  serio"` contiene `"serio"` como subcadena. Se exige `serio` presente y
-  `no serio` ausente.
-- **Sin datos del paciente por defecto.** Un grupo de WhatsApp no es un canal
-  controlado y, con pasarela no oficial, el texto pasa por un tercero. El
-  mensaje lleva dispositivo, trazabilidad, servicio, desenlace y quién reporta.
-  `WA_INCLUDE_PHI=true` lo desactiva, como decisión institucional explícita.
-- **Credenciales solo en Propiedades del script**, nunca en el archivo —
-  `clasp push` las subiría al repositorio.
-- **Control de ruido**: `WA_SOLO_ALERTAS`, `WA_SILENCIO` y `WA_MODO=resumen`. Un
-  grupo saturado se silencia, que es lo contrario del objetivo.
-- Reintento 3× con backoff, antiduplicados por fila (los triggers pueden
-  reintentar), bitácora en la hoja `LogWhatsApp` y aviso por correo (máx. uno
-  por hora) ante fallos de la pasarela.
+`notificarNuevaRespuesta(e)`: mensaje de WhatsApp con 9 campos del
+formulario (nombre del reportante, hospitalizacion, edad, servicio-cama,
+diagnostico, dispositivo medico, fabricante, area/servicio, descripcion
+del evento), con emojis por campo, ademas del correo ya existente.
+`enviarAlertaWhatsApp(mensaje)`: envio via Green-API (`sendMessage`) al
+grupo configurado en `GREENAPI_GROUP_CHATID`. `listarChatsGreenAPI()`:
+utilidad de solo lectura (`getChats`) para descubrir el chatId de un
+grupo sin riesgo de enviar nada. `construirMensajeDesdeEvento(fakeEvent)`,
+`testConstruccionMensaje()`, `enviarEjemploAlGrupo()`,
+`testEnvioWhatsApp()`, `enviarCasosReales()`: utilidades de configuracion
+y prueba. Mapeo documentado de "Nombre del Reportante" a la columna
+`Nombre` y "Hospitalizacion" a la columna `Desenlace del evento
+/incidente adverso` (ver README.md seccion 5), al no existir columnas
+literales con esos nombres en el formulario.
 
-### Pruebas
+### Cambiado
 
-`test/dry-run.js` corre fuera de Apps Script con stubs mínimos. No puede
-ejercitar el envío ni el trigger, pero cubre lo que se rompe en silencio:
-resolución de encabezados contra las columnas reales de ambas hojas, colisión
-`"Nombre"` vs. `"Nombre de la institución"`, clasificación serio/no serio,
-banderas y ausencia de datos del paciente en el mensaje.
+Grupo de destino de produccion: de PRUEBA BOT
+(`120363412506101174@g.us`, usado solo durante pruebas) a Nuevo
+SF-HDV-SyD-InterSalud (`120363426937928040@g.us`). Mensaje de WhatsApp:
+se agregaron emojis por campo para hacerlo mas legible al triar desde el
+grupo.
+
+### Validado con datos reales
+
+Se enviaron y confirmaron 3 mensajes de ejemplo usando datos reales de
+los casos 3, 4 y 19 del formulario (filas 4, 5 y 20 de la hoja de
+respuestas), antes de pasar el grupo de destino a produccion.
+
+### Incidente y correccion
+
+Durante el cambio de grupo, una condicion de carrera en el selector de
+funcion del editor de Apps Script provoco que, en un primer intento, se
+ejecutara `enviarCasosReales()` en lugar de `listarChatsGreenAPI()`,
+reenviando 3 mensajes ya enviados antes al grupo PRUEBA BOT. Se detecto
+por el formato de la respuesta en el log y se corrigio recargando el
+editor en una pestana nueva, verificando el selector de funcion con una
+captura de pantalla antes de cada ejecucion posterior. Ver CLAUDE.md
+para el detalle y la recomendacion operativa derivada.
+
+### Quitado
+
+Arquitectura multi-proveedor anterior (`WA_PROVIDER`: callmebot /
+ultramsg / whapi / greenapi / telegram / webhook), el perfil `proa`
+compartido en este mismo archivo, la proteccion PHI por defecto
+(`WA_INCLUDE_PHI`), la cola/resumen por horario de silencio y las
+pruebas de `test/dry-run.js` asociadas a esa arquitectura. Esa version
+nunca llego a pegarse en el editor de Apps Script en produccion; el
+codigo que si esta corriendo es el de este reemplazo.
