@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Apps Script no se puede ejecutar aquí, pero el archivo es JavaScript:
+      # un error de sintaxis solo se vería al pegarlo en el editor.
+      - name: Sintaxis de WhatsAppAlerts.gs
+        run: |
+          cp WhatsAppAlerts.gs /tmp/whatsapp_alerts_check.js
+          node --check /tmp/whatsapp_alerts_check.js
+          echo "WhatsAppAlerts.gs: OK"
+
+      - name: Prueba en seco (encabezados, banderas, privacidad)
+        run: node test/dry-run.js
