@@ -32,21 +32,38 @@ function notificarNuevaRespuesta(e) {
   var asunto = "🚨📋¡NUEVO CASO DE TECNOVIGILANCIA!!🚨🆘";
   var valores = (e && e.namedValues) ? e.namedValues : {};
   function campo(nombre) {
-    return (valores[nombre] && valores[nombre][0]) ? valores[nombre][0] : "-";
+    if (Object.prototype.hasOwnProperty.call(valores, nombre) && valores[nombre] && valores[nombre][0]) {
+      return valores[nombre][0];
+    }
+    var claves = Object.keys(valores);
+    for (var k = 0; k < claves.length; k++) {
+      if (claves[k].trim() === nombre.trim()) {
+        return (valores[claves[k]] && valores[claves[k]][0]) ? valores[claves[k]][0] : "—";
+      }
+    }
+    return "—";
   }
 
+  var tipoId = campo("Tipo de identificación");
+  var numeroId = campo("Número de identificación del paciente");
+  var sexo = campo("Sexo");
+  var edad = campo("Edad");
+  var dispositivo = campo("Nombre genérico y/o comercial del dispositivo médico");
+  var fabricante = campo("Nombre o razón social del fabricante");
+
   var mensaje = "🚨📋 ¡NUEVO CASO DE TECNOVIGILANCIA! 📋🚨\n\n" +
-      "👤 *Nombre del Reportante:* " + campo("Nombre") + "\n" +
-      "🏥 *Hospitalización:* " + campo("Desenlace del evento /incidente adverso") + "\n" +
-      "🎂 *Edad:* " + campo("Edad") + "\n" +
-      "🛏️ *Servicio - Cama del Paciente:* " + campo("Servicio - Cama del Paciente") + "\n" +
-      "🩺 *Diagnóstico inicial del paciente:* " + campo("Diagnóstico inicial del paciente") + "\n" +
-      "🔧 *Dispositivo médico:* " + campo("Nombre genérico y/o comercial del dispositivo médico") + "\n" +
-      "🏭 *Fabricante:* " + campo("Nombre o razón social del fabricante") + "\n" +
-      "📍 *Área/Servicio del evento:* " + campo("Área/Servicio de funcionamiento del dispositivo médico en el momento del evento/incidente") + "\n" +
-      "📝 *Descripción del evento:* " + campo("Descripción del evento o incidente adverso") +
-      "\n\n" +
-      "🔗 Revisar caso completo aquí:\n" + SpreadsheetApp.getActive().getUrl();
+    "👤 *Nombre del Reportante:* " + campo("Nombre del Reportante") + "\n" +
+    "🧑‍⚕️ *Profesión:* " + campo("Profesión") + "\n" +
+    "🏢 *Área a la que pertenece:* " + campo("Área a la que pertenece") + "\n" +
+    "🆔 *Identificación del paciente:* " + tipoId + " " + numeroId + "\n" +
+    "🛏️ *Servicio - Cama del Paciente:* " + campo("Servicio - Cama del Paciente") + "\n" +
+    "🚻 *Sexo:* " + sexo + "   🎂 *Edad:* " + edad + "\n" +
+    "🩺 *Diagnóstico inicial del paciente:* " + campo("Diagnóstico inicial del paciente") + "\n" +
+    "🔧 *Dispositivo médico:* " + dispositivo + "   🏭 *Fabricante:* " + fabricante + "\n" +
+    "🏷️ *Clasificación:* " + campo("Clasificación") + "\n" +
+    "📝 *Descripción del evento:* " + campo("Descripción del evento o incidente adverso") + "\n" +
+    "⚠️ *Desenlace del evento:* " + campo("Desenlace del evento /incidente adverso") + "\n" +
+    "📅 *Fecha del evento:* " + campo("Marca temporal");
 
   enviarAlertaWhatsApp(mensaje);
 
