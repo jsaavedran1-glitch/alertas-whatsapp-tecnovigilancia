@@ -2,6 +2,20 @@
 
 Todos los cambios notables de este modulo se documentan aqui.
 
+## [Fix campos vacíos y rediseño de mensaje] - 2026-08-02
+
+Se detectó que las alertas llegaban con casi todos los campos en "—". Causa raíz: los títulos de las preguntas del Google Form tienen espacios al inicio/final que no coincidían con los literales usados en `campo()` dentro de `namedValues`.
+
+### Corregido
+
+`campo(nombre)`: ahora intenta match exacto primero (para evitar colisiones cuando hay dos columnas con el mismo nombre trimeado, ej. "Tipo de identificación") y si no lo encuentra, hace fallback comparando `.trim()` sobre todas las claves de `e.namedValues`.
+
+### Cambiado
+
+`notificarNuevaRespuesta(e)`: mensaje de WhatsApp/correo rediseñado con los siguientes campos y emojis: Nombre del Reportante, Profesión, Área a la que pertenece, Tipo/Número de identificación del paciente, Servicio - Cama del Paciente, Sexo/Edad, Diagnóstico inicial del paciente, Dispositivo médico/Fabricante, Clasificación, Descripción del evento, Desenlace del evento y Fecha del evento (columna "Marca temporal"). Se retiró la línea "🔗 Revisar caso completo aquí" y se reemplazó por la fecha del evento.
+
+Verificado contra el último caso real en producción antes de sincronizar este repositorio. No se realizaron envíos de prueba adicionales al grupo de WhatsApp; solo el trigger automático `onFormSubmit` dispara alertas en producción.
+
 ## [Reemplazo completo] - 2026-07-26
 
 Se reemplazo la implementacion anterior (arquitectura multi-proveedor
