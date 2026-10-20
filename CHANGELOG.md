@@ -2,6 +2,12 @@
 
 Todos los cambios notables de este modulo se documentan aqui.
 
+## [2026-10-20]
+
+### Agregado
+- Pie de firma en todos los mensajes de WhatsApp, en cursiva y debajo del cuerpo (mismo estilo que el bot de Alertas INVIMA): `_Bot diseñado por el QF Juan Pablo Saavedra · Servicio Farmacéutico HDV_`. Se agrega en `enviarAlertaWhatsApp()`, así que aplica a toda alerta que envíe el bot. El texto va con escapes `\u` para que las tildes no se corrompan al pegar en el editor de Apps Script. El correo electrónico no cambia.
+- `test/pie-firma.js`: prueba en seco que carga el `.gs` real con Green-API simulado y verifica que el mensaje termine con el pie. No envía nada.
+
 ## [Fix campos vacíos y rediseño de mensaje] - 2026-08-02
 
 Se detectó que las alertas llegaban con casi todos los campos en "—". Causa raíz: los títulos de las preguntas del Google Form tienen espacios al inicio/final que no coincidían con los literales usados en `campo()` dentro de `namedValues`.

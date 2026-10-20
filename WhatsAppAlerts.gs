@@ -85,7 +85,8 @@ function enviarAlertaWhatsApp(mensaje) {
   }
 
   var firmaBot = props.getProperty('GREENAPI_BOT_LABEL') || '🤖Bot Tecnovigilancia HDV🤖';
-  var mensajeFirmado = '*' + firmaBot + '*' + String.fromCharCode(10) + String.fromCharCode(10) + mensaje;
+  var pieBot = '_Bot dise\u00f1ado por el QF Juan Pablo Saavedra \u00b7 Servicio Farmac\u00e9utico HDV_';
+  var mensajeFirmado = '*' + firmaBot + '*' + String.fromCharCode(10) + String.fromCharCode(10) + mensaje + String.fromCharCode(10) + String.fromCharCode(10) + pieBot;
 
   var url = props.getProperty('GREENAPI_API_URL') + '/waInstance' + idInstance + '/sendMessage/' + apiToken;
   var payload = {

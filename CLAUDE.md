@@ -138,3 +138,7 @@ no reactivarlo como destino sin instruccion explicita.
 El usuario (Juan Pablo Saavedra) es Quimico Farmaceutico, referente de
 Tecnovigilancia y secretario del comite del HDV. Los mensajes de este
 bot llegan al mismo comite que el coordina.
+
+## Pie de firma
+
+Todo mensaje de WhatsApp termina con `_Bot diseñado por el QF Juan Pablo Saavedra · Servicio Farmacéutico HDV_` (cursiva, mismo estilo que el bot de Alertas INVIMA), agregado en `enviarAlertaWhatsApp()`. Si se cambia el texto, actualizar también `test/pie-firma.js`.
